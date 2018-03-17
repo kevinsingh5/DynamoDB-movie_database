@@ -1,6 +1,6 @@
-name: <your name>
-eid: <your ut eid>
-bitbucketid: <your bitbucket id>
+name: Kevin Singh
+eid: ks37843
+bitbucketid: singh5
 comments: <Comments, if any>
 
 
