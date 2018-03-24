@@ -23,7 +23,13 @@ class DynamoDBHandler:
         print('6. print_stats')
         print('7. delete_table')
 
-    # TODO: create query function for python2/3 input
+    # query function for python2/3 input
+    def io(self, query_string):
+        if sys.version_info[0] < 3:
+            user_input = raw_input(query_string)
+        else:
+            user_input = input(query_string)
+        return user_input
 
     def create_and_load_data(self, tableName, fileName):
         # TODO - This function should create a table named <tableName> 
@@ -56,18 +62,17 @@ class DynamoDBHandler:
                 'WriteCapacityUnits': 10
             }
         )
-        print('Created table')
+        print('Table %s created' % tableName)
+
         # Wait until the table exists.
-        #table.meta.client.get_waiter('table_exists').wait(TableName=tableName)
-        #print('Table status', table.item_count)
-        '''waiter = self.client.get_waiter('table_exists')
+        waiter = self.client.get_waiter('table_not_exists')
         waiter.wait(
             TableName=tableName,
-            #WaiterConfig={
-             #   'Delay': 50,
-              #  'MaxAttempts': 5
-            #}
-        )'''
+            WaiterConfig={
+                'Delay': 10,
+                'MaxAttempts': 10
+            }
+        )
 
         table = self.resource.Table(tableName)
         
@@ -104,13 +109,13 @@ class DynamoDBHandler:
         response = ''
 
         if command[0] == 'insert_movie':
-            year = raw_input('Year> ')
-            title = raw_input('Title> ')
-            director = raw_input('Director> ')
-            actors = raw_input('Actors> ')
-            release_date = raw_input('Release Date> ')
-            rating = raw_input('Rating> ')
-            
+            year = self.io('Year> ')
+            title = self.io('Title> ')
+            director = self.io('Director> ')
+            actors = self.io('Actors> ')
+            release_date = self.io('Release Date> ')
+            rating = self.io('Rating> ')
+
         return response
 
 def main():
@@ -122,22 +127,21 @@ def main():
         exit()
     region = sys.argv[1]
 
+    tableName = 'Movies'
+    json_file = 'movies.json'
+
     # initialize handler with specified region
     dynamodb_handler = DynamoDBHandler(region)
 
     # Check if table/data has already been loaded
     try:
-        dynamodb_handler.create_and_load_data('Movies', 'moviedata.json')   # create table and laod data from file
+        dynamodb_handler.create_and_load_data(tableName, json_file)   # create table and laod data from file
     except dynamodb_handler.client.exceptions.ResourceInUseException:
-        print('Table \'Movies\' already exists')
+        print('Table %s already exists' % tableName)
 
     while True:
         try:
-            command = ''
-            if sys.version_info[0] < 3:
-                command = raw_input('Enter command (\'help\' to see all commands, \'exit\' to quit)> ')
-            else:
-                command = input('Enter command (\'help\' to see all commands, \'exit\' to quit)> ')
+            command = dynamodb_handler.io('Enter command (\'help\' to see all commands, \'exit\' to quit)> ')
 
             # Remove multiple whitespaces, if they exist
             command = ' '.join(command.split())
