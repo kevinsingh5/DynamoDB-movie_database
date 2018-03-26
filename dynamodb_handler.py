@@ -1,4 +1,5 @@
 from __future__ import print_function
+from boto3.dynamodb.conditions import Key, Attr
 import boto3
 import json
 import decimal
@@ -95,6 +96,31 @@ class DynamoDBHandler:
 
         return None
 
+    def insert_movie(self, year, title, director, actors, release_date, rating):
+        print(year, title)
+        tableName = 'Movies'
+        table = self.resource.Table(tableName)
+        response = table.put_item(
+            Item={
+                'year': year,
+                'title': title,
+                'director': director,
+                'actors': actors,
+                'release_Date': release_date,
+                'rating': rating,
+            }
+        )
+        return response
+
+
+    def search_movie_actor(self, actor):
+        tableName = 'Movies'
+        table = self.resource.Table(tableName)
+        response = table.scan(
+            FilterExpression=Attr('actors').eq(actor)
+        )
+        return response['Items']
+
 
     def dispatch(self, command_string):
         # TODO - This function takes in as input a string command (e.g. 'insert_movie')
@@ -109,12 +135,24 @@ class DynamoDBHandler:
         response = ''
 
         if command[0] == 'insert_movie':
-            year = self.io('Year> ')
+            year = int(self.io('Year> '))
             title = self.io('Title> ')
             director = self.io('Director> ')
             actors = self.io('Actors> ')
             release_date = self.io('Release Date> ')
             rating = self.io('Rating> ')
+            if(year != '' or title != ''): # or director != '' or actors != '' or release_date != '' or rating != ''):
+                response = self.insert_movie(year, title, director, actors, release_date, rating)
+            else:
+                response = "error"
+
+
+        if command[0] == 'search_movie_actor':
+            actor = self.io('Actor> ')
+            if actor != '':
+                response = self.search_movie_actor(actor)
+            else:
+                response = 'error'
 
         return response
 
