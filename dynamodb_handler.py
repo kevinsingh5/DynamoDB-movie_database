@@ -1,5 +1,6 @@
 from __future__ import print_function
 from boto3.dynamodb.conditions import Key, Attr
+from botocore.exceptions import ClientError
 import boto3
 import json
 import decimal
@@ -26,6 +27,7 @@ class DynamoDBHandler:
 
     # query function for python2/3 input
     def io(self, query_string):
+        user_input = ''
         if sys.version_info[0] < 3:
             user_input = raw_input(query_string)
         else:
@@ -97,20 +99,41 @@ class DynamoDBHandler:
         return None
 
     def insert_movie(self, year, title, director, actors, release_date, rating):
-        print(year, title)
         tableName = 'Movies'
         table = self.resource.Table(tableName)
-        response = table.put_item(
-            Item={
-                'year': year,
-                'title': title,
-                'director': director,
-                'actors': actors,
-                'release_Date': release_date,
-                'rating': rating,
-            }
-        )
-        return response
+        item = {'year': year, 'title': title}
+
+        if(director != ''):
+            director_list = director.split(',')
+            for x in director_list:
+                x.strip()
+            item['director'] = director_list
+        if(actors != ''):
+            actors_list = actors.split(',')
+            for x in actors_list:
+                x.strip()
+            item['actors'] = actors_list
+        if(release_date != ''):
+            release_date = release_date.split(' ')
+            day = int(release_date[0])
+            month = release_date[1]
+            yr = int(release_date[2])
+            if ((day < 1 or day > 31) or month.isdigit() or (yr < 1 or yr > 2050)):
+                response = 'Release Date must be in format <day> <month> <year>'
+                return response
+            item['release_date'] = release_date
+        if(rating != ''):
+            item['rating'] = rating
+
+        try:
+            response = table.put_item(
+                Item=item
+            )
+        except ClientError as e:
+            return ('Movie %s could not be inserted - %s' % (title, e.response['Error']['Message']))
+        else:
+            if response['ResponseMetadata']['HTTPStatusCode'] == 200:
+                return 'Movie %s successfully inserted' % title
 
 
     def search_movie_actor(self, actor):
@@ -135,24 +158,23 @@ class DynamoDBHandler:
         response = ''
 
         if command[0] == 'insert_movie':
-            year = int(self.io('Year> '))
+            year = self.io('Year> ')
             title = self.io('Title> ')
             director = self.io('Director> ')
             actors = self.io('Actors> ')
             release_date = self.io('Release Date> ')
             rating = self.io('Rating> ')
-            if(year != '' or title != ''): # or director != '' or actors != '' or release_date != '' or rating != ''):
-                response = self.insert_movie(year, title, director, actors, release_date, rating)
+            if not year or not title:
+                response = "Missing <year> or <title>. Pease try again."
             else:
-                response = "error"
-
+                response = self.insert_movie(int(year), title, director, actors, release_date, rating)
 
         if command[0] == 'search_movie_actor':
             actor = self.io('Actor> ')
-            if actor != '':
-                response = self.search_movie_actor(actor)
+            if not actor:
+                response = 'Field left empty. You must specify an actor!'
             else:
-                response = 'error'
+                response = self.search_movie_actor(actor)
 
         return response
 
