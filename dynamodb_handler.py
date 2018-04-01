@@ -101,14 +101,16 @@ class DynamoDBHandler:
     def insert_movie(self, year, title, directors, actors, release_date, rating):
         tableName = 'Movies'
         table = self.resource.Table(tableName)
-        item = {'year': year, 'title': title}
+        item = {'year': year, 'title': title, 'title_lower': title.lower()}
 
         if(directors != ''):
             [x.strip() for x in directors.split(',')]
             item['directors'] = directors
+            item['directors_lower'] = directors.lower()
         if(actors != ''):
             [x.strip() for x in actors.split(',')]
             item['actors'] = actors
+            item['actors_lower'] = actors.lower()
         if(release_date != ''):
             release_date = release_date.split(' ')
             day = int(release_date[0])
@@ -136,34 +138,38 @@ class DynamoDBHandler:
         table = self.resource.Table(tableName)
         response = None
         movies = table.scan(
-            FilterExpression=Key('title').eq(title)
+            FilterExpression=Key('title_lower').eq(title.lower())
         )
+        if movies['Items'] == []:
+            response = 'Movie \'%s\' does not exist'
+            return response
         for movie in movies['Items']:
-            if movie['title'] == title:
-                table.delete_item(
-                    Key = {
-                        'title': movie['title'],
-                        'year': movie['year'] 
-                    }
-                )
-                response = 'Movie(s) deleted'
-        
-
-        """ response = table.delete_item(
-            Key = {
-                'title': title
-            },
-            ConditionExpression = Attr('title').eq(title)
-        ) """
+            if movie['title_lower'] == title.lower():
+                try:
+                    response = table.delete_item(
+                        Key = {
+                            'title': movie['title'],
+                            'year': movie['year'] 
+                        }
+                    )
+                except ClientError as e:
+                    return 'Movie %s could not be deleted - %s' % (title, e.response['Error']['Message'])
+            if response['ResponseMetadata']['HTTPStatusCode'] == 200:
+                response = 'Movie %s successfully deleted' % title
         return response
 
     def search_movie_actor(self, actor):
         tableName = 'Movies'
         table = self.resource.Table(tableName)
-        response = table.scan(
-            FilterExpression=Attr('actors').contains(actor)
-        )
-        return response['Items']
+        try:
+            response = table.scan(
+                FilterExpression=Attr('actors_lower').contains(actor.lower())
+            )
+        except ClientError as e:
+            return 'Table could not be scanned for actor %s - %s' % (actor, e.response['Error']['Message'])
+        if response['Count'] == 0:
+            response = 'No movies found for actor %s' % actor
+        return response
 
 
     def dispatch(self, command_string):
