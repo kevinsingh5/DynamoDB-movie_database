@@ -98,27 +98,23 @@ class DynamoDBHandler:
 
         return None
 
-    def insert_movie(self, year, title, director, actors, release_date, rating):
+    def insert_movie(self, year, title, directors, actors, release_date, rating):
         tableName = 'Movies'
         table = self.resource.Table(tableName)
         item = {'year': year, 'title': title}
 
-        if(director != ''):
-            director_list = director.split(',')
-            for x in director_list:
-                x.strip()
-            item['director'] = director_list
+        if(directors != ''):
+            [x.strip() for x in directors.split(',')]
+            item['directors'] = directors
         if(actors != ''):
-            actors_list = actors.split(',')
-            for x in actors_list:
-                x.strip()
-            item['actors'] = actors_list
+            [x.strip() for x in actors.split(',')]
+            item['actors'] = actors
         if(release_date != ''):
             release_date = release_date.split(' ')
             day = int(release_date[0])
             month = release_date[1]
             yr = int(release_date[2])
-            if ((day < 1 or day > 31) or month.isdigit() or (yr < 1 or yr > 2050)):
+            if (release_date.__len__ < 3 or (day < 1 or day > 31) or month.isdigit() or (yr < 1 or yr > 2050)):
                 response = 'Release Date must be in format <day> <month> <year>'
                 return response
             item['release_date'] = release_date
@@ -135,12 +131,37 @@ class DynamoDBHandler:
             if response['ResponseMetadata']['HTTPStatusCode'] == 200:
                 return 'Movie %s successfully inserted' % title
 
+    def delete_movie(self, title):
+        tableName = 'Movies'
+        table = self.resource.Table(tableName)
+        response = None
+        movies = table.scan(
+            FilterExpression=Key('title').eq(title)
+        )
+        for movie in movies['Items']:
+            if movie['title'] == title:
+                table.delete_item(
+                    Key = {
+                        'title': movie['title'],
+                        'year': movie['year'] 
+                    }
+                )
+                response = 'Movie(s) deleted'
+        
+
+        """ response = table.delete_item(
+            Key = {
+                'title': title
+            },
+            ConditionExpression = Attr('title').eq(title)
+        ) """
+        return response
 
     def search_movie_actor(self, actor):
         tableName = 'Movies'
         table = self.resource.Table(tableName)
         response = table.scan(
-            FilterExpression=Attr('actors').eq(actor)
+            FilterExpression=Attr('actors').contains(actor)
         )
         return response['Items']
 
@@ -160,21 +181,29 @@ class DynamoDBHandler:
         if command[0] == 'insert_movie':
             year = self.io('Year> ')
             title = self.io('Title> ')
-            director = self.io('Director> ')
+            directors = self.io('Director> ')
             actors = self.io('Actors> ')
             release_date = self.io('Release Date> ')
             rating = self.io('Rating> ')
             if not year or not title:
                 response = "Missing <year> or <title>. Pease try again."
             else:
-                response = self.insert_movie(int(year), title, director, actors, release_date, rating)
+                response = self.insert_movie(int(year), title, directors, actors, release_date, rating)
 
-        if command[0] == 'search_movie_actor':
+        elif command[0] == 'search_movie_actor':
             actor = self.io('Actor> ')
             if not actor:
                 response = 'Field left empty. You must specify an actor!'
             else:
                 response = self.search_movie_actor(actor)
+
+        elif command[0] == 'delete_movie':
+            title = self.io('Title> ')
+            if not title:
+                response = 'Movie title missing. Please try again.'
+            else:
+                response = self.delete_movie(title)
+
 
         return response
 
