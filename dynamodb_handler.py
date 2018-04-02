@@ -12,8 +12,7 @@ class DynamoDBHandler:
 
     def __init__(self, region):
         self.client = boto3.client('dynamodb')
-        self.resource = boto3.resource('dynamodb', region_name=region, endpoint_url='http://localhost:8000')
-        # self.resource = boto3.resource('dynamodb',endpoint_url="http://localhost:8000") 
+        self.resource = boto3.resource('dynamodb', region_name=region) #, endpoint_url='http://localhost:8000')
 
     def help(self):
         print('Supported Commands:')
@@ -68,7 +67,7 @@ class DynamoDBHandler:
         print('Table %s created' % tableName)
 
         # Wait until the table exists.
-        waiter = self.client.get_waiter('table_not_exists')
+        waiter = self.client.get_waiter('table_exists')
         waiter.wait(
             TableName=tableName,
             WaiterConfig={
@@ -141,7 +140,7 @@ class DynamoDBHandler:
             FilterExpression=Key('title_lower').eq(title.lower())
         )
         if movies['Items'] == []:
-            response = 'Movie \'%s\' does not exist'
+            response = 'Movie \'%s\' does not exist' % title
             return response
         for movie in movies['Items']:
             if movie['title_lower'] == title.lower():
@@ -169,8 +168,63 @@ class DynamoDBHandler:
             return 'Table could not be scanned for actor %s - %s' % (actor, e.response['Error']['Message'])
         if response['Count'] == 0:
             response = 'No movies found for actor %s' % actor
+        if response['ResponseMetadata']['HTTPStatusCode'] == 200 and response['Count'] > 0:
+            items = response['Items']
+            response = []
+            for item in items:
+                movie = {}
+                if item['title']:
+                    movie['title'] = item['title']
+                if item['year']:
+                    movie['year'] = str(item['year'])
+                if item['actors']:
+                    movie['actors'] = item['actors']
+                #movie = title, str(year), actors
+                response.append(movie)
         return response
 
+    def search_movie_actor_director(self, actor, director):
+        tableName = 'Movies'
+        table = self.resource.Table(tableName)
+        try:
+            response = table.scan(
+                Select = 'ALL_ATTRIBUTES',
+                FilterExpression= Attr('actors_lower').contains(actor.lower()) |
+                    Attr('directors_lower').contains(director.lower())
+            )
+        except ClientError as e:
+            return 'Table could not be scanned for actor %s and director %s - %s' % (actor, director, e.response['Error']['Message'])
+        if response['Count'] == 0:
+            response = 'No movies found for actor %s and director %s' % (actor, director)
+        if response['ResponseMetadata']['HTTPStatusCode'] == 200 and response['Count'] > 0:
+            items = response['Items']
+            response = []
+            for item in items:
+                movie = {}
+                if item['title']:
+                    movie['title'] = item['title']
+                if item['year']:
+                    movie['year'] = str(item['year'])
+                if item['actors']:
+                    movie['actors'] = item['actors']
+                if item['directors']:
+                    movie['directors'] = item['directors']
+                #movie = title, str(year), actors
+                response.append(movie)
+        return response
+
+
+
+    def delete_table(self, tableName):
+        #table = self.resource.Table(tableName)
+        try:
+            self.client.delete_table(
+                TableName=tableName
+            )
+            response = 'Table %s successfully deleted!' % tableName
+        except ClientError as e:
+            response = 'Table %s does not exist - %s' % (tableName, e)
+        return response
 
     def dispatch(self, command_string):
         # TODO - This function takes in as input a string command (e.g. 'insert_movie')
@@ -203,6 +257,14 @@ class DynamoDBHandler:
             else:
                 response = self.search_movie_actor(actor)
 
+        elif command[0] == 'search_movie_actor_director':
+            actor = self.io('Actor> ')
+            director = self.io('Director> ')
+            if not actor or not director:
+                response = 'Error: One or more fields left empty.'
+            else:
+                response = self.search_movie_actor_director(actor, director)
+
         elif command[0] == 'delete_movie':
             title = self.io('Title> ')
             if not title:
@@ -210,7 +272,13 @@ class DynamoDBHandler:
             else:
                 response = self.delete_movie(title)
 
-
+        elif command[0] == 'delete_table':
+            name = self.io('Table name> ')
+            if not name:
+                response = 'Please specify a table name'
+            else:
+                response = self.delete_table(name)
+                
         return response
 
 def main():
@@ -223,7 +291,7 @@ def main():
     region = sys.argv[1]
 
     tableName = 'Movies'
-    json_file = 'movies.json'
+    json_file = 'moviedata.json'
 
     # initialize handler with specified region
     dynamodb_handler = DynamoDBHandler(region)
@@ -248,6 +316,13 @@ def main():
                 dynamodb_handler.help()
             else:
                 response = dynamodb_handler.dispatch(command)
+                '''try:
+                    json_obj = json.loads(response)
+                    for key, value in json_obj.items():
+                        #value = json_obj[key]
+                        print(key, value)
+                except ValueError as e:
+                    print(response)'''
                 print(response)
         except Exception as e:
             print(e)
